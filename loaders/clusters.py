@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import re
-import json
-from zabbix.api import ZabbixAPI
 
 import settings
 from logger import STREAM
+
 
 
 class _Node:
@@ -14,73 +13,20 @@ class _Node:
         for parameter, value in kwargs.items():
             setattr(self, parameter, value)
 
-    def _get_zabbix_metrics(self, hostname, metric):
-        try:
-            zapi = ZabbixAPI(url=settings.ZABBIX_SERVER, user=settings.ZABBIX_USERNAME, password=settings.ZABBIX_PASSWORD)
-        except Exception as error:
-            STREAM.error("Cannot establish Zabbix session: {}".format(error))
-            return -1
-
-        try:
-            host = zapi.do_request("host.get", {
-                "output": "extend",
-                "filter": {
-                    "host": hostname,
-                    "status": 0
-                }
-            })
-            zabbix_host_id = host["result"][0]["hostid"]            # Внутренний ID хоста в Zabbix.
-            zabbix_host_status = host["result"][0]["available"]     # Состояние наблюдаемого хоста в Zabbix. (1 - наблюдается, 2 - не наблюдается).
-        except:
-            STREAM.error("Cannot find specific host: {}".format(hostname))
-            return -1
-
-        if zabbix_host_status == "1":
-            try:
-                item = zapi.do_request("item.get", {
-                    "output": "extend",
-                    "hostids": zabbix_host_id,
-                    "search": {
-                        "key_": metric
-                    },
-                })
-                item_id = item["result"][0]["itemid"]
-            except:
-                STREAM.error("Cannot find specific metric: {}".format(metric))
-                return -1
-
-            try:
-                value = zapi.do_request("history.get", {
-                    "output": "extend",
-                    "history": 0,
-                    "itemids": item_id,
-                    "sortfield": "clock",
-                    "sortorder": "DESC",
-                    "limit": 1
-                })
-
-                metric_value = value["result"][0]["value"]
-            except:
-                STREAM.error("Cannot retrieve value for item: {}".format(item))
-                return -1
-            return json.loads(metric_value)
-        else:
-            return -1
-
     @property
     def cpu(self):
         """ Node cpu load """
-        return self._get_zabbix_metrics(self.name, "cpu")
+        return settings.MONITORING_SYSTEM.get_metric(self.name, "cpu")
 
     @property
     def memory(self):
         """ Node memory free """
-        return self._get_zabbix_metrics(self.name, "memory")
+        return settings.MONITORING_SYSTEM.get_metric(self.name, "memory")
 
     @property
     def iowait(self):
         """ Node iowait load """
-        return self._get_zabbix_metrics(self.name, "iowait")
+        return settings.MONITORING_SYSTEM.get_metric(self.name, "iowait")
 
 
 class _ClusterProperty:

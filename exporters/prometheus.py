@@ -14,7 +14,7 @@ from strategies.distribution.simple_distribution import SimpleStrategy
 class PrometheusMetrics(MetricsExporter):
 
     _INSTANCE = None
-    QUEUE_CONTROL_FILE = os.path.join(settings.BASE_QUEUE_PATH, "queue_control.flag")
+    QUEUE_CONTROL_FILE = settings.QUEUE_CONTROL_FILE
 
     def __init__(self, update_interval):
         self.update_interval = update_interval

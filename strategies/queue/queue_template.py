@@ -14,8 +14,9 @@ class QueueStrategy(metaclass=ABCMeta):
     def __next__(self) -> object:
         """
         :rtype: object
-          Must return task object from loaders.tasks
+          Must return task object from loaders.tasks or None if no tasks
         """
+        return None
 
 
 if __name__ == '__main__':

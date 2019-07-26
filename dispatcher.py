@@ -3,7 +3,7 @@
 
 import os
 from time import sleep
-from threading import Thread
+from multiprocessing import Process
 
 import settings
 from logger import STREAM, LoggerOptions
@@ -57,6 +57,8 @@ class Dispatcher:
         assert isinstance(settings.CLUSTER_NODE_GROUPS, dict), "settings.CLUSTER_NODE_GROUPS: expected dict"
         assert (True if os.path.exists(settings.BASE_QUEUE_PATH) and os.path.isdir(settings.BASE_QUEUE_PATH) else False),\
             "settings.BASE_QUEUE_PATH: expected directory_path"
+        assert (True if os.path.exists(settings.QUEUE_CONTROL_FILE) and os.path.isfile(settings.QUEUE_CONTROL_FILE) else False),\
+            "settings.QUEUE_CONTROL_FILE: expected file_path"
         # Check objects
         assert (True if QueueStrategy in settings.QUEUE_STRATEGY.__class__.__bases__ else False),\
             "settings.QUEUE_STRATEGY: object must be inherited from class QueueStrategy"
@@ -70,6 +72,7 @@ class Dispatcher:
         STREAM.info("Using settings:")
         STREAM.info(" -> LOGLEVEL = %s" % settings.LOGLEVEL)
         STREAM.info(" -> BASE_QUEUE_PATH = %s" % settings.BASE_QUEUE_PATH)
+        STREAM.info(" -> QUEUE_CONTROL_FILE = %s" % settings.QUEUE_CONTROL_FILE)
         STREAM.info(" -> QUEUE_IDLE_INTERVAL = %s" % settings.QUEUE_IDLE_INTERVAL)
         STREAM.info(" -> TASK_GROUPS = %s" % [task for task in settings.TASK_GROUPS.values()])
         STREAM.info(" -> QUEUE_STRATEGY = %s" % settings.QUEUE_STRATEGY.__class__.__name__)
@@ -89,9 +92,9 @@ class Dispatcher:
             except AttributeError:
                 pass
             else:
-                t = Thread(target=exporter.run)
-                t.daemon = True
-                t.start()
+                p = Process(target=exporter.run)
+                p.daemon = True
+                p.start()
             STREAM.info(" -> loaded: %s" % exporter.__class__.__name__)
         sleep(5)
 

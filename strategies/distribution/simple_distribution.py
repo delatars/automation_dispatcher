@@ -9,7 +9,7 @@ from logger import STREAM
 
 
 class SimpleStrategy(DistributionStrategy):
-    # Пороговые величины, при достижении которых новые задания будут поставлены на "паузу".
+    # Thresholds, upon which the new tasks will be put on a "pause".
     CLUSTERS_WORKLOAD_THRESHOLDS = {
         "master":
             {
@@ -33,7 +33,7 @@ class SimpleStrategy(DistributionStrategy):
     }
     UPDATE_INTERVAL = 120
     REDISTRIBUTE_INTERVAL = UPDATE_INTERVAL//4
-    QUEUE_CONTROL_FILE = os.path.join(settings.BASE_QUEUE_PATH, "queue_control.flag")
+    QUEUE_CONTROL_FILE = settings.QUEUE_CONTROL_FILE
 
     def __init__(self):
         self.loader = ClustersLoader()
@@ -41,6 +41,16 @@ class SimpleStrategy(DistributionStrategy):
     def distribute_task(self, task):
         STREAM.info("Distribute task: %s" % task.uuid)
         while True:
+            STREAM.info("Check manual mode")
+            if not self.get_manual_queue_control_status():
+                if task.group == "system":
+                    STREAM.info("Task: %s : system task" % task.uuid)
+                    self.run_task(task)
+                else:
+                    STREAM.info("Standby before retry to distribute task: %s sec(s)" % self.REDISTRIBUTE_INTERVAL)
+                    sleep(self.REDISTRIBUTE_INTERVAL)
+                    continue
+
             STREAM.info("Check cluster's status")
             if task.resource == "vm":
                 STREAM.info("Task: %s : Requires resources: %s" % (task.uuid, task.resource))
@@ -82,10 +92,10 @@ class SimpleStrategy(DistributionStrategy):
         else:
             queue_control_status = "start"
         if queue_control_status == "start":
-            STREAM.info("-> Manual distribution control: ON")
+            STREAM.info("-> Manual control: distribution is: ON")
             return True
         else:
-            STREAM.warning("-> Manual distribution control: OFF")
+            STREAM.warning("-> Manual control: distribution is: OFF")
             STREAM.warning("-> Only system tasks wiil be distributed.")
             return False
 
@@ -111,7 +121,7 @@ class SimpleStrategy(DistributionStrategy):
             return True
 
     def run_task(self, task):
-        task.push_task_to_running()
+        task.push_to_running()
         STREAM.info("Standby before distribute next task: %s sec(s)" % self.UPDATE_INTERVAL)
         sleep(self.UPDATE_INTERVAL)
 

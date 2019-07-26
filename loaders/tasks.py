@@ -16,7 +16,7 @@ class _Task:
         for parameter, value in kwargs.items():
             setattr(self, parameter, value)
 
-    def push_task_to_running(self):
+    def push_to_running(self):
         if self.status == "waiting":
             try:
                 shutil.move(os.path.join(self.queue_directory, "waiting", self.uuid),
@@ -26,6 +26,12 @@ class _Task:
                 STREAM.warning("Task: %s : Can't run! Maybe already running" % self.uuid)
         else:
             STREAM.warning("Task: %s : Already running")
+
+    def discard(self):
+        try:
+            os.remove(os.path.join(self.queue_directory, self.status, self.uuid))
+        except FileNotFoundError:
+            STREAM.warning("Task: %s : File not found!" % self.uuid)
 
 
 class _TaskProperty:
@@ -39,7 +45,7 @@ class _TaskProperty:
     def filter_tasks(self, **kwargs):
         """ Method get filter, and return list of filtered tasks
             Example:
-                filter_tasks(group="guest", priority="low") """
+                filter_tasks(group="unix", priority="low") """
         tasks = self.tasks
         for attr, value in kwargs.items():
             tasks = list(filter(lambda task_object: getattr(task_object, attr) == value, tasks))
@@ -67,6 +73,8 @@ class TasksLoader:
     _GROUPS = settings.TASK_GROUPS
     _WAITING_TASKS = []
     _RUNNING_TASKS = []
+    _WAITING_TASKS_CACHE = []
+    _RUNNING_TASKS_CACHE = []
 
     def __new__(cls, *args, **kwargs):
         """ Singleton object
@@ -84,9 +92,6 @@ class TasksLoader:
 
     def __init__(self, base_directory=settings.BASE_QUEUE_PATH):
         self._base_directory = base_directory
-        # Remove cache with first init
-        self._remove_listing_cache(os.path.join(base_directory, "waiting", ".listing"))
-        self._remove_listing_cache(os.path.join(base_directory, "running", ".listing"))
 
     def _compare_listings(self, listing, cached_listing):
         """ Compare os.listdir with cache
@@ -102,17 +107,11 @@ class TasksLoader:
         STREAM.debug(" -> deleted tasks: %s" % deleted)
         return arrived, deleted
 
-    def _get_listing_from_cache(self, filepath):
+    def _get_listing_from_cache(self):
         """ Get directory listing, previously saved in file """
-        if os.path.isfile(filepath):
-            with open(filepath, "r") as lst:
-                listing = lst.read()
-                try:
-                    listing = json.loads(listing)
-                except:
-                    return []
-            return listing
-        return []
+        cache_list = getattr(self, "_%s_TASKS_CACHE" % self._QUEUE_TYPE.upper())
+        assert isinstance(cache_list, list), "listing: expected type <list>"
+        return cache_list
 
     def _get_path(self):
         """
@@ -139,32 +138,26 @@ class TasksLoader:
         """
         directory_listing = [fil for fil in os.listdir(directory) if not fil.startswith(".")]
         STREAM.debug(" -> listdir tasks: %s" % directory_listing)
-        cached_directory_listing = self._get_listing_from_cache(os.path.join(directory, ".listing"))
+        cached_directory_listing = self._get_listing_from_cache()
         STREAM.debug(" -> cached tasks: %s" % cached_directory_listing)
         arrived, deleted = self._compare_listings(directory_listing, cached_directory_listing)
         self._remove_deleted_tasks(deleted)
         arrived_abs_path = [os.path.join(directory, fil) for fil in arrived]
-        self._save_listing_to_cache(directory_listing, os.path.join(directory, ".listing"))
+        self._save_listing_to_cache(directory_listing)
         return arrived_abs_path
-
-    def _remove_listing_cache(self, filepath):
-        try:
-            os.remove(filepath)
-        except FileNotFoundError:
-            pass
 
     def _remove_deleted_tasks(self, deleted_list):
         """ Remove deleted tasks from tasks lists """
         get_obj_list = getattr(self, "_%s_TASKS" % self._QUEUE_TYPE.upper())
-        for task_obj in get_obj_list:
+        iter_list = iter(list(get_obj_list))
+        for task_obj in iter_list:
             if task_obj.uuid in deleted_list:
                 get_obj_list.remove(task_obj)
 
-    def _save_listing_to_cache(self, listing, filepath):
+    def _save_listing_to_cache(self, listing):
         """ Save directory listing to the file with json format """
         assert isinstance(listing, list), "listing: expected type <list>"
-        with open(filepath, "w") as lst:
-            lst.write(json.dumps(listing))
+        setattr(self, "_%s_TASKS_CACHE" % self._QUEUE_TYPE.upper(), listing)
 
     def _load_tasks(self, directory):
         TASKS = []
